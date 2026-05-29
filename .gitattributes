@@ -1,0 +1,22 @@
+# Auto-detect text files and normalize line endings to LF on commit
+* text=auto eol=lf
+
+# Windows scripts keep CRLF
+*.bat text eol=crlf
+*.cmd text eol=crlf
+*.ps1 text eol=crlf
+
+# Binary 3D formats — prevent line-ending corruption
+*.stl binary
+*.3mf binary
+*.glb binary
+*.ply binary
+
+# Text-based 3D formats — normalize line endings
+*.obj text eol=lf
+*.mtl text eol=lf
+*.step text eol=lf
+*.stp  text eol=lf
+*.gltf text eol=lf
+*.dxf  text eol=lf
+*.svg  text eol=lf
