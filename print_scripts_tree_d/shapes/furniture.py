@@ -2,126 +2,12 @@ import logging
 import operator
 from collections.abc import Sequence
 from functools import reduce
-from math import ceil, cos, radians, sin, sqrt
+from math import cos, radians, sin, sqrt
 from typing import Literal, cast
 
-import build123d as bd
-from build123d import (
-    Box,
-    CenterOf,
-    Compound,
-    Cylinder,
-    Face,
-    Part,
-    Pos,
-    ShapeList,
-    Vector,
-    Wire,
-    extrude,
-)
+from build123d import Box, Compound, Face, Part, Pos, ShapeList, Vector, Wire, extrude
 
 _log = logging.getLogger(__name__)
-_SQRT3 = sqrt(3)
-
-
-def make_washer(outer_diameter: float, hole_diameter: float, thickness: float) -> Compound:
-    """Create a flat washer (annular disc) centred at the origin.
-
-    Args:
-        outer_diameter: Overall diameter of the washer in mm.
-        hole_diameter: Diameter of the central hole in mm. Must be less than outer_diameter.
-        thickness: Thickness of the washer along the Z axis in mm.
-
-    Returns:
-        A washer-shaped compound (outer cylinder minus inner cylinder).
-
-    Raises:
-        ValueError: If hole_diameter >= outer_diameter.
-    """
-    if hole_diameter >= outer_diameter:
-        raise ValueError(
-            f"hole_diameter ({hole_diameter}) must be less than outer_diameter ({outer_diameter})."
-        )
-    body = Cylinder(outer_diameter / 2, thickness)
-    hole = Cylinder(hole_diameter / 2, thickness)
-    return body - hole
-
-
-def make_hexagonal_mesh(
-    length: float,
-    width: float,
-    thickness: float,
-    hex_radius: float,
-    spacing: float,
-    fillet_radius: float = 0.0,
-    outer_border: float = 0.0,
-) -> Compound:
-    """Create a rectangular panel with a honeycomb pattern of hexagonal cutouts.
-
-    Args:
-        length: Panel dimension along the X axis in mm.
-        width: Panel dimension along the Y axis in mm.
-        thickness: Panel thickness along the Z axis in mm.
-        hex_radius: circumradius (centre to vertex) of each hexagonal cutout in mm.
-        spacing: Minimum gap between adjacent hexagon edges in mm.
-        fillet_radius: If > 0, fillet top-face hex edges at this radius in mm.
-        outer_border: If > 0, add a solid border of this width around the panel perimeter in mm.
-    Returns:
-        A compound representing the panel with hex cutouts subtracted.
-    """
-    base = Box(length, width, thickness)
-
-    # Tiling step derived so the gap between any two adjacent hex edges equals spacing.
-    S = hex_radius + spacing / _SQRT3
-    dx, dy = 1.5 * S, S * _SQRT3
-
-    # both=True extrudes symmetrically from z=0, matching the box which is also
-    # centred at the origin. Without this, cuts only reach the top half of the
-    # panel and leave a solid slab on the bottom.
-    hex_template = extrude(bd.RegularPolygon(hex_radius, 6), thickness / 2, both=True)
-
-    # Enough columns/rows to cover the panel; partial hexes at the boundary are
-    # clipped automatically by the boolean subtraction.
-    nx, ny = ceil(length / dx) + 1, ceil(width / dy) + 1
-    total = (2 * nx + 1) * (2 * ny + 1)
-    _log.info("Unioning %d hex cutters...", total)
-
-    # Union all cutters into one shape, then subtract once — faster than
-    # subtracting each hex from an increasingly complex result in a loop.
-    cutters = reduce(
-        operator.add,
-        (
-            Pos(col * dx, row * dy + (dy / 2 if col % 2 else 0)) * hex_template
-            # Odd columns are offset by half a row step to form the honeycomb stagger.
-            for col in range(-nx, nx + 1)
-            for row in range(-ny, ny + 1)
-        ),
-    )
-
-    if outer_border > 0:
-        # Clip cutters to the inner region so hexes don't cut into the border.
-        # Must happen before subtraction — unioning after would fill in the holes.
-        _log.info("Clipping cutters to inner region...")
-        inner = Box(length - 2 * outer_border, width - 2 * outer_border, thickness)
-        cutters = cutters & inner
-
-    _log.info("Subtracting cutters from base...")
-    result = base - cutters
-
-    if fillet_radius > 0:
-        # Only fillet the top face — filleting all edges fails on the short, irregular
-        # edges where partial hexagons are clipped at the panel boundary.
-        # Edges shorter than 2 * fillet_radius are also skipped as they cannot
-        # geometrically accommodate the requested radius.
-        _log.info("Filleting top edges...")
-        top_edges = ShapeList(
-            e
-            for e in max(result.faces(), key=lambda f: f.center(CenterOf.BOUNDING_BOX).Z).edges()
-            if e.length >= 2 * fillet_radius
-        )
-        result = result.fillet(fillet_radius, top_edges)
-
-    return cast(Compound, result)
 
 
 def make_table(
@@ -213,8 +99,8 @@ def make_column(
             them at the bottom. Used when gusset_size > 0.
         gusset_orientation_xy:
             A list or tuple of four angles in degrees, specifying the XY rotation of
-            each gusset around the leg. Used when gusset_size > 0. 
-            Also used to determine number of gussets. 
+            each gusset around the leg. Used when gusset_size > 0.
+            Also used to determine number of gussets.
     Returns:
         A compound representing the column.
     """
@@ -238,11 +124,16 @@ def make_column(
     # Cache XY extents before clipping — the Z-clip doesn't change XY.
     pre_clip_bb = column.bounding_box().size
     hw, hd = pre_clip_bb.X / 2, pre_clip_bb.Y / 2
+    half_t = gusset_thickness / 2
+    inner_hw = sqrt(max(0.0, hw**2 - half_t**2))
+    inner_hd = sqrt(max(0.0, hd**2 - half_t**2))
 
     # Clip to the intended total height — the body may be taller than the gap.
-    # & can return ShapeList in some build123d versions; reduce back to a single Compound.
+    # & can return ShapeList in some build123d versions.
     clipped = column & Box(10_000, 10_000, height)
-    column = cast(Compound, reduce(operator.add, clipped) if isinstance(clipped, ShapeList) else clipped)
+    column = cast(
+        Compound, Compound(children=list(clipped)) if isinstance(clipped, ShapeList) else clipped
+    )
 
     if gusset_size > 0:
         if gusset_thickness <= 0:
@@ -257,11 +148,18 @@ def make_column(
             for angle_deg in gusset_orientation_xy:
                 angle_rad = radians(angle_deg)
                 cos_a, sin_a = cos(angle_rad), sin(angle_rad)
-                cx, cy = cos_a * hw, sin_a * hd
+                cx, cy = cos_a * inner_hw, sin_a * inner_hd
                 dx, dy = cos_a * gusset_size, sin_a * gusset_size
                 pts = [(cx, cy, gz), (cx + dx, cy + dy, gz), (cx, cy, gz + gv)]
                 gusset_shapes.append(_gusset(pts, gusset_thickness))
             if gusset_shapes:
-                column = cast(Compound, column + reduce(operator.add, gusset_shapes))
+                all_gussets = reduce(operator.add, gusset_shapes)
+                merged = column + all_gussets
+                column = cast(
+                    Compound,
+                    Compound(children=list(merged))
+                    if isinstance(merged, ShapeList)
+                    else cast(Compound, merged),
+                )
 
     return column
