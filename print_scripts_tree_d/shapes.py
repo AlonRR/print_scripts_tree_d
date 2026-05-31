@@ -1,41 +1,27 @@
 import logging
 import operator
+from collections.abc import Sequence
 from functools import reduce
-from math import ceil, sqrt
-from typing import cast
+from math import ceil, cos, radians, sin, sqrt
+from typing import Literal, cast
 
 import build123d as bd
-from build123d import Box, Compound, Cylinder, Part, Pos, ShapeList, extrude
+from build123d import (
+    Box,
+    CenterOf,
+    Compound,
+    Cylinder,
+    Face,
+    Part,
+    Pos,
+    ShapeList,
+    Vector,
+    Wire,
+    extrude,
+)
 
 _log = logging.getLogger(__name__)
 _SQRT3 = sqrt(3)
-
-
-def make_box(length: float, width: float, height: float) -> Part:
-    """Create a rectangular box centred at the origin.
-
-    Args:
-        length: Dimension along the X axis in mm.
-        width: Dimension along the Y axis in mm.
-        height: Dimension along the Z axis in mm.
-
-    Returns:
-        A solid rectangular box.
-    """
-    return Box(length, width, height)
-
-
-def make_cylinder(radius: float, height: float) -> Part:
-    """Create a cylinder centred at the origin with its axis along Z.
-
-    Args:
-        radius: Radius of the cylinder in mm.
-        height: Height of the cylinder along the Z axis in mm.
-
-    Returns:
-        A solid cylinder.
-    """
-    return Cylinder(radius, height)
 
 
 def make_washer(outer_diameter: float, hole_diameter: float, thickness: float) -> Compound:
@@ -50,8 +36,12 @@ def make_washer(outer_diameter: float, hole_diameter: float, thickness: float) -
         A washer-shaped compound (outer cylinder minus inner cylinder).
 
     Raises:
-        ValueError: Raised by build123d if hole_diameter >= outer_diameter.
+        ValueError: If hole_diameter >= outer_diameter.
     """
+    if hole_diameter >= outer_diameter:
+        raise ValueError(
+            f"hole_diameter ({hole_diameter}) must be less than outer_diameter ({outer_diameter})."
+        )
     body = Cylinder(outer_diameter / 2, thickness)
     hole = Cylinder(hole_diameter / 2, thickness)
     return body - hole
@@ -126,7 +116,7 @@ def make_hexagonal_mesh(
         _log.info("Filleting top edges...")
         top_edges = ShapeList(
             e
-            for e in max(result.faces(), key=lambda f: f.center.Z).edges()
+            for e in max(result.faces(), key=lambda f: f.center(CenterOf.BOUNDING_BOX).Z).edges()
             if e.length >= 2 * fillet_radius
         )
         result = result.fillet(fillet_radius, top_edges)
@@ -136,32 +126,44 @@ def make_hexagonal_mesh(
 
 def make_table(
     table_top: Part | Compound,
-    legs: list[Part | Compound],
-    leg_positions: list[tuple[float, float]],
-    leg_height: float,
+    columns: list[Part | Compound],
+    column_positions: list[tuple[float, float]],
 ) -> Compound:
-    """Create a table by combining a tabletop and legs.
+    """Create a table by combining a tabletop and columns.
 
     Args:
         table_top:
             A Part representing the tabletop, centered at the origin.
-        legs:
-            A list of Parts representing the legs, each centered at the origin.
-        leg_positions:
-            A list of (x, y) tuples in the range 0–100, where (0,0) is the
-            bottom-left corner of the tabletop and (100,100) is the top-right.
-        leg_height:
-            The height of the legs along the Z axis in mm.
+        columns:
+            A list of Parts representing the columns, each centered at the origin.
+        column_positions:
+            A list of (x, y) tuples in the range 0–100, where (0,0) places the
+            column's outer corner flush with the tabletop corner and (100,100) does
+            the same on the opposite corner. Columns never extend beyond the tabletop.
     Returns:
-        A compound representing the assembled table.
+        A compound with the tabletop's bottom face at z=0 and columns extending upward.
     """
-    bb = table_top.bounding_box().size
-    table = cast(Compound, table_top)
-    for leg, (px, py) in zip(legs, leg_positions):
-        # Convert 0-100 percentage to absolute mm coordinates centred at origin.
-        x = (px / 100 - 0.5) * bb.X
-        y = (py / 100 - 0.5) * bb.Y
-        table = cast(Compound, table + Pos(x, y, -leg_height / 2) * leg)
+    top_bb = table_top.bounding_box().size
+    # Shift the tabletop up so its bottom face sits at z=0.
+    table = cast(Compound, Pos(0, 0, top_bb.Z / 2) * table_top)
+    # Cache (x, y, z) extents by object id to avoid recomputing for identical columns.
+    _bb_cache: dict[int, tuple[float, float, float]] = {}
+    for column, (px, py) in zip(columns, column_positions):
+        if id(column) not in _bb_cache:
+            s = column.bounding_box().size
+            _bb_cache[id(column)] = (s.X, s.Y, s.Z)
+        col_x, col_y, col_z = _bb_cache[id(column)]
+        if col_x >= top_bb.X or col_y >= top_bb.Y:
+            raise ValueError(
+                f"Column bounding box ({col_x:.1f} x {col_y:.1f}) must be smaller "
+                f"than the tabletop ({top_bb.X:.1f} x {top_bb.Y:.1f})."
+            )
+        # Inset the usable range by each column's half-width so the edge, not
+        # its centre, reaches the tabletop boundary at 0% and 100%.
+        x = (px / 100 - 0.5) * (top_bb.X - col_x)
+        y = (py / 100 - 0.5) * (top_bb.Y - col_y)
+        # Column bottom sits on the tabletop top face; columns extend upward.
+        table = cast(Compound, table + Pos(x, y, top_bb.Z + col_z / 2) * column)
 
     return table
 
@@ -173,38 +175,93 @@ def _scale_to_fit(part: Part, target_x: float, target_y: float) -> Part:
     return part.scale(factor)
 
 
-def make_leg(
-    leg_body: Part,
-    leg_height: float,
-    leg_foot: Part,
-    leg_diameter: float | tuple[float, float] | None,
+def _gusset(pts: list[tuple[float, float, float]], thickness: float) -> Compound:
+    """Right-triangle prism from three 3-D points, extruded by thickness/2 both ways."""
+    wire = Wire.make_polygon([Vector(*p) for p in pts], close=True)
+    return cast(Compound, extrude(Face(wire), thickness / 2, both=True))
+
+
+def make_column(
+    body: Part,
+    height: float,
+    foot: Part,
+    diameter: float | tuple[float, float] | None,
+    gusset_size: float = 0.0,
+    gusset_thickness: float = 0.0,
+    gusset_position_z: Literal["top", "bottom"] = "top",
+    gusset_orientation_xy: Sequence[float] = (0, 90, 180, 270),
 ) -> Compound:
-    """Create a leg by combining a shaped leg section with a foot shape.
+    """Create a column by combining a shaped body section with a foot shape.
 
     Args:
-        leg_body:
-            A Part representing the main section of the leg, centered at the origin.
-        leg_height:
-            The height of the leg along the Z axis in mm.
-        leg_foot:
-            A Part representing the foot of the leg, centered at the origin.
-        leg_diameter:
+        body:
+            A Part representing the main section of the column, centered at the origin.
+        height:
+            The total height of the column along the Z axis in mm.
+        foot:
+            A Part representing the foot of the column, centered at the origin.
+        diameter:
             If given, each part is scaled uniformly so its XY extent fits within this
             diameter (float → square, tuple → rectangle). Nothing is cut away.
+        gusset_size:
+            If > 0, right-triangle gussets of this arm length are added at the angles
+            and position specified by gusset_orientation_xy and gusset_position_z.
+        gusset_thickness:
+            Thickness of each gusset in mm. Used when gusset_size > 0.
+        gusset_position_z:
+            "top" (default) places gussets at the top of the column; "bottom" places
+            them at the bottom. Used when gusset_size > 0.
+        gusset_orientation_xy:
+            A list or tuple of four angles in degrees, specifying the XY rotation of
+            each gusset around the leg. Used when gusset_size > 0. 
+            Also used to determine number of gussets. 
     Returns:
-        A compound representing the leg.
+        A compound representing the column.
     """
-    if isinstance(leg_diameter, float):
-        leg_body = _scale_to_fit(leg_body, leg_diameter, leg_diameter)
-        leg_foot = _scale_to_fit(leg_foot, leg_diameter, leg_diameter)
-    elif isinstance(leg_diameter, tuple):
-        leg_body = _scale_to_fit(leg_body, leg_diameter[0], leg_diameter[1])
-        leg_foot = _scale_to_fit(leg_foot, leg_diameter[0], leg_diameter[1])
+    if diameter is not None:
+        if isinstance(diameter, tuple):
+            tx, ty = diameter
+        else:
+            tx, ty = diameter, diameter
+        body = _scale_to_fit(body, tx, ty)
+        foot = _scale_to_fit(foot, tx, ty)
 
-    foot_height = leg_foot.bounding_box().size.Z
+    foot_height = foot.bounding_box().size.Z
+    body_height = body.bounding_box().size.Z
 
-    # Foot sits at the bottom of the total height; body fills the space above it.
-    foot_z = -leg_height / 2 + foot_height / 2
-    body_z = foot_height / 2  # body bottom aligns with foot top
+    # Foot at the bottom of the total height; body sits directly above it.
+    foot_z = -height / 2 + foot_height / 2
+    body_z = -height / 2 + foot_height + body_height / 2
 
-    return cast(Compound, Pos(0, 0, body_z) * leg_body + Pos(0, 0, foot_z) * leg_foot)
+    column = cast(Compound, Pos(0, 0, body_z) * body + Pos(0, 0, foot_z) * foot)
+
+    # Cache XY extents before clipping — the Z-clip doesn't change XY.
+    pre_clip_bb = column.bounding_box().size
+    hw, hd = pre_clip_bb.X / 2, pre_clip_bb.Y / 2
+
+    # Clip to the intended total height — the body may be taller than the gap.
+    # & can return ShapeList in some build123d versions; reduce back to a single Compound.
+    clipped = column & Box(10_000, 10_000, height)
+    column = cast(Compound, reduce(operator.add, clipped) if isinstance(clipped, ShapeList) else clipped)
+
+    if gusset_size > 0:
+        if gusset_thickness <= 0:
+            _log.warning("gusset_size > 0 but gusset_thickness is 0 — no gussets added.")
+        else:
+            gz = height / 2 if gusset_position_z == "top" else -height / 2
+            # Vertical arm goes toward the body: down from top, up from bottom.
+            gv = -gusset_size if gusset_position_z == "top" else gusset_size
+
+            _log.info("Adding %d gussets at %s...", len(gusset_orientation_xy), gusset_position_z)
+            gusset_shapes = []
+            for angle_deg in gusset_orientation_xy:
+                angle_rad = radians(angle_deg)
+                cos_a, sin_a = cos(angle_rad), sin(angle_rad)
+                cx, cy = cos_a * hw, sin_a * hd
+                dx, dy = cos_a * gusset_size, sin_a * gusset_size
+                pts = [(cx, cy, gz), (cx + dx, cy + dy, gz), (cx, cy, gz + gv)]
+                gusset_shapes.append(_gusset(pts, gusset_thickness))
+            if gusset_shapes:
+                column = cast(Compound, column + reduce(operator.add, gusset_shapes))
+
+    return column
