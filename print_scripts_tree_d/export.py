@@ -26,9 +26,11 @@ def save_stl(shape: Compound, path: Path | str, validate: bool = True) -> None:
     if not validate:
         return
 
-    mesh = trimesh.load(str(path))
-    if isinstance(mesh, trimesh.Scene):
-        mesh = trimesh.util.concatenate(mesh.dump())
+    loaded = trimesh.load(str(path))
+    if isinstance(loaded, trimesh.Scene):
+        mesh = trimesh.util.concatenate(loaded.dump())
+    else:
+        mesh = loaded
     assert mesh.is_watertight, f"{path.name}: mesh has holes — not print-ready"
     assert mesh.volume > 0, f"{path.name}: mesh has inverted normals (negative volume)"
     _log.info("%s validated — watertight, volume=%.1f mm³", path.name, mesh.volume)

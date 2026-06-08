@@ -23,13 +23,20 @@ def make_hexagonal_mesh(
     """Create a rectangular panel with a honeycomb pattern of hexagonal cutouts.
 
     Args:
-        length: Panel dimension along the X axis in mm.
-        width: Panel dimension along the Y axis in mm.
-        thickness: Panel thickness along the Z axis in mm.
-        hex_radius: circumradius (centre to vertex) of each hexagonal cutout in mm.
-        spacing: Minimum gap between adjacent hexagon edges in mm.
-        fillet_radius: If > 0, fillet top-face hex edges at this radius in mm.
-        outer_border: If > 0, add a solid border of this width around the panel perimeter in mm.
+        length:
+            Panel dimension along the X axis in mm.
+        width:
+            Panel dimension along the Y axis in mm.
+        thickness:
+            Panel thickness along the Z axis in mm.
+        hex_radius:
+            circumradius (centre to vertex) of each hexagonal cutout in mm.
+        spacing:
+            Minimum gap between adjacent hexagon edges in mm.
+        fillet_radius:
+            If > 0, fillet top-face hex edges at this radius in mm.
+        outer_border:
+            If > 0, add a solid border of this width around the panel perimeter in mm.
     Returns:
         A compound representing the panel with hex cutouts subtracted.
     """
@@ -42,7 +49,9 @@ def make_hexagonal_mesh(
     # both=True extrudes symmetrically from z=0, matching the box which is also
     # centred at the origin. Without this, cuts only reach the top half of the
     # panel and leave a solid slab on the bottom.
-    hex_template = extrude(bd.RegularPolygon(hex_radius, 6), thickness / 2, both=True)
+    hex_template = extrude(
+        bd.RegularPolygon(hex_radius, 6), thickness / 2, both=True
+    )
 
     # Enough columns/rows to cover the panel; partial hexes at the boundary are
     # clipped automatically by the boolean subtraction.
@@ -52,11 +61,18 @@ def make_hexagonal_mesh(
 
     # Union all cutters into one shape, then subtract once — faster than
     # subtracting each hex from an increasingly complex result in a loop.
+    #
+    # Offset the grid by -S in x so the panel centre falls on a junction point
+    # (where three hexagons meet) rather than on a hex centre.
+    # Derivation: without offset, three hexes at (0,0), (dx, ±dy/2) share a
+    # vertex at (S, 0). Subtracting S from every x position moves that vertex
+    # to the origin.
     cutters = reduce(
         operator.add,
         (
-            bd.Pos(col * dx, row * dy + (dy / 2 if col % 2 else 0)) * hex_template
-            # Odd columns are offset by half a row step to form the honeycomb stagger.
+            # Odd columns offset by half a row to form the honeycomb stagger.
+            bd.Pos(col * dx - S, row * dy + (dy / 2 if col % 2 else 0))
+            * hex_template
             for col in range(-nx, nx + 1)
             for row in range(-ny, ny + 1)
         ),
@@ -66,7 +82,9 @@ def make_hexagonal_mesh(
         # Clip cutters to the inner region so hexes don't cut into the border.
         # Must happen before subtraction — unioning after would fill in the holes.
         _log.info("Clipping cutters to inner region...")
-        inner = Box(length - 2 * outer_border, width - 2 * outer_border, thickness)
+        inner = Box(
+            length - 2 * outer_border, width - 2 * outer_border, thickness
+        )
         cutters = cutters & inner
 
     _log.info("Subtracting cutters from base...")
@@ -80,8 +98,10 @@ def make_hexagonal_mesh(
         _log.info("Filleting top edges...")
         top_edges = ShapeList(
             e
-            for e in max(result.faces(), key=lambda f: f.center(CenterOf.BOUNDING_BOX).Z).edges()
-            if e.length >= 2 * fillet_radius
+            for e in max(
+                result.faces(), key=lambda f: f.center(CenterOf.BOUNDING_BOX).Z
+            ).edges()
+            if e.geom_type.name == "LINE" and e.length >= 2 * fillet_radius
         )
         result = result.fillet(fillet_radius, top_edges)
 
