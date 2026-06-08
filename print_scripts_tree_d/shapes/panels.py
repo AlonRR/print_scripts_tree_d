@@ -56,26 +56,33 @@ def make_hexagonal_mesh(
     # Enough columns/rows to cover the panel; partial hexes at the boundary are
     # clipped automatically by the boolean subtraction.
     nx, ny = ceil(length / dx) + 1, ceil(width / dy) + 1
-    total = (2 * nx + 1) * (2 * ny + 1)
-    _log.info("Unioning %d hex cutters...", total)
 
-    # Union all cutters into one shape, then subtract once — faster than
-    # subtracting each hex from an increasingly complex result in a loop.
-    #
+    # Pre-filter to hex centres whose bounding circle overlaps the clip
+    # region (inner area when outer_border > 0, full panel otherwise).
+    # Hexes entirely outside never cut anything and only bloat the cutter
+    # compound fed to every subsequent OCC boolean op.
+    inner_hx = length / 2 - outer_border + hex_radius
+    inner_hy = width / 2 - outer_border + hex_radius
     # Offset the grid by -S in x so the panel centre falls on a junction point
     # (where three hexagons meet) rather than on a hex centre.
     # Derivation: without offset, three hexes at (0,0), (dx, ±dy/2) share a
     # vertex at (S, 0). Subtracting S from every x position moves that vertex
     # to the origin.
+    positions = [
+        (x, y)
+        for col in range(-nx, nx + 1)
+        for row in range(-ny, ny + 1)
+        # Odd columns offset by half a row to form the honeycomb stagger.
+        for x, y in [(col * dx - S, row * dy + (dy / 2 if col % 2 else 0))]
+        if abs(x) < inner_hx and abs(y) < inner_hy
+    ]
+    _log.info("Unioning %d hex cutters...", len(positions))
+
+    # Union all cutters into one shape, then subtract once — faster than
+    # subtracting each hex from an increasingly complex result in a loop.
     cutters = reduce(
         operator.add,
-        (
-            # Odd columns offset by half a row to form the honeycomb stagger.
-            bd.Pos(col * dx - S, row * dy + (dy / 2 if col % 2 else 0))
-            * hex_template
-            for col in range(-nx, nx + 1)
-            for row in range(-ny, ny + 1)
-        ),
+        (bd.Pos(x, y) * hex_template for x, y in positions),
     )
 
     if outer_border > 0:

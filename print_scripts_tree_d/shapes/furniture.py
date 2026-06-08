@@ -50,6 +50,7 @@ def make_table(
     table = cast(Compound, Pos(0, 0, top_bb.Z / 2) * table_top)
     # Cache (x, y, z) extents by object id to avoid recomputing for identical columns.
     _bb_cache: dict[int, tuple[float, float, float]] = {}
+    positioned: list[object] = []
     for column, (px, py) in zip(columns, column_positions):
         if id(column) not in _bb_cache:
             s = column.bounding_box().size
@@ -64,9 +65,10 @@ def make_table(
         # its centre, reaches the tabletop boundary at 0% and 100%.
         x = (px / 100 - 0.5) * (top_bb.X - col_x)
         y = (py / 100 - 0.5) * (top_bb.Y - col_y)
-        # Column bottom sits on the tabletop top face; columns extend upward.
-        table = _as_compound(table + Pos(x, y, top_bb.Z + col_z / 2) * column)
+        positioned.append(Pos(x, y, top_bb.Z + col_z / 2) * column)
 
+    if positioned:
+        table = _as_compound(table + reduce(operator.add, positioned))
     return table
 
 

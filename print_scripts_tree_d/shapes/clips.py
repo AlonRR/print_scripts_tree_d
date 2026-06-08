@@ -1,5 +1,7 @@
 import logging
-from math import cos, radians, sin
+import operator
+from functools import reduce
+from math import cos, pi, radians, sin
 from typing import cast
 
 from build123d import (
@@ -151,28 +153,36 @@ def make_cylinder_clip(
     # Longitudinal slot cuts between adjacent tabs free the spring fingers.
     slot_z = tip_z - slot_length / 2
     _log.info("Cutting %d spring-finger slots...", tab_count)
-    for i in range(tab_count):
-        slot_angle = i * tab_spacing + tab_spacing / 2
-        cut = (
-            Rot(0, 0, slot_angle)
+    slots = reduce(
+        operator.add,
+        (
+            Rot(0, 0, i * tab_spacing + tab_spacing / 2)
             * Pos(0, 0, slot_z)
             * Box(od + 4, slot_width, slot_length)
-        )
-        body = _as_compound(body - cut)
+            for i in range(tab_count)
+        ),
+    )
+    body = _as_compound(body - slots)
 
     # Snap tabs on the freed spring fingers near the insertion tip.
     _log.info("Adding %d snap tabs...", tab_count)
-    for i in range(tab_count):
-        tab = _snap_tab(
-            outer_r=outer_r,
-            tab_protrusion=tab_protrusion,
-            tab_length=eff_tab_length,
-            tab_width=tab_width,
-            tip_z=tip_z,
-            angle_deg=i * tab_spacing,
-        )
-        body = _as_compound(body + tab)
+    tabs = reduce(
+        operator.add,
+        (
+            _snap_tab(
+                outer_r=outer_r,
+                tab_protrusion=tab_protrusion,
+                tab_length=eff_tab_length,
+                tab_width=tab_width,
+                tip_z=tip_z,
+                angle_deg=i * tab_spacing,
+            )
+            for i in range(tab_count)
+        ),
+    )
+    body = _as_compound(body + tabs)
 
+    flange_r = outer_r
     if include_flange:
         flange_r = bore_diameter / 2 + flange_overlap
         flange_z = -(body_depth + flange_thickness) / 2
@@ -195,7 +205,7 @@ def make_cylinder_clip(
                 if e.geom_type.name == "CIRCLE"
                 and e.center().Z > 0
                 and e.length >= 2 * flat_fillet_r
-                and abs(e.length - 2 * 3.14159265 * inner_r) < 1.0
+                and abs(e.length - 2 * pi * inner_r) < 1.0
             ]
             if bore_top:
                 result = _as_compound(result.fillet(flat_fillet_r, bore_top))
