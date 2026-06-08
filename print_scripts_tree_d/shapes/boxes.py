@@ -47,6 +47,11 @@ def make_rounded_box(
     # RectangleRounded requires radius < min(w, h) / 2, so clamp both radii.
     inner_l = length - 2 * wall_thickness
     inner_w = width - 2 * wall_thickness
+    if inner_l <= 0 or inner_w <= 0:
+        raise ValueError(
+            f"wall_thickness {wall_thickness} leaves no interior "
+            f"({inner_l:.1f} x {inner_w:.1f} mm)."
+        )
     eff_corner_r = min(corner_radius, min(length, width) / 2 * 0.99)
     inner_corner_r = min(
         max(0.1, corner_radius - wall_thickness),
@@ -80,6 +85,6 @@ def make_rounded_box(
         )
         if rim_edges:
             _log.info("Filleting %s rim r=%.3f...", label, eff_r)
-            shell = cast(Compound, shell.fillet(eff_r, rim_edges))
+            shell = shell.fillet(eff_r, rim_edges)
 
     return shell

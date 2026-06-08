@@ -132,6 +132,9 @@ def make_cylinder_clip(
             f"{od:.1f} mm clip body OD."
         )
 
+    if tab_count <= 0:
+        raise ValueError(f"tab_count must be >= 1, got {tab_count}")
+
     tip_z = body_depth / 2
     outer_r = od / 2
     # Leave at least 2 mm of cylinder wall as the spring-finger root.
@@ -199,13 +202,14 @@ def make_cylinder_clip(
             # Fillet the inner bore top edge before the flat cut while it
             # is still a clean full circle.  After Rot(0, 90, 0) this edge
             # maps to the bottom of the clip, improving print quality.
+            bore_circumference = 2 * pi * inner_r
             bore_top = [
                 e
                 for e in result.edges()
                 if e.geom_type.name == "CIRCLE"
                 and e.center().Z > 0
                 and e.length >= 2 * flat_fillet_r
-                and abs(e.length - 2 * pi * inner_r) < 1.0
+                and abs(e.length - bore_circumference) < 1.0
             ]
             if bore_top:
                 result = _as_compound(result.fillet(flat_fillet_r, bore_top))

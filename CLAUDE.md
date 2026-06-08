@@ -75,6 +75,9 @@ def make_widget(length: float, width: float, ...) -> Compound:
 - Shape is **centred at the origin**; Z is the primary (height) axis.
   Exception: `make_table` places the tabletop's bottom face at z=0 by design.
 - Pure function — no module-level state.
+- Validate inputs early — raise `ValueError` with a clear message for
+  params that cannot produce valid geometry (e.g. `tab_count < 1`, a wall
+  thicker than half the box, `hole_diameter >= outer_diameter`).
 
 ---
 
@@ -95,6 +98,12 @@ Use the **direct (algebra) API** — never the builder context (`with BuildPart(
 
 `both=True` in `extrude` centres the solid at z = 0, matching the default
 behaviour of `Box`.
+
+`reduce(operator.add, parts)` raises `TypeError` on an empty sequence —
+guard with `if parts:` before calling (collect into a list and test it).
+The same applies to `fillet()` on an empty edge list: skip the call when no
+edges survive filtering. Both are easy to hit when boundary clipping or a
+zero count removes every element.
 
 ### Returning Compound
 

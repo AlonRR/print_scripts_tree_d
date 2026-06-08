@@ -11,6 +11,12 @@ _log = logging.getLogger(__name__)
 _SQRT3 = sqrt(3)
 
 
+def _as_compound(result: object) -> Compound:
+    if isinstance(result, ShapeList):
+        return Compound(children=list(result))
+    return cast(Compound, result)
+
+
 def make_hexagonal_mesh(
     length: float,
     width: float,
@@ -40,6 +46,11 @@ def make_hexagonal_mesh(
     Returns:
         A compound representing the panel with hex cutouts subtracted.
     """
+    if hex_radius <= 0:
+        raise ValueError(f"hex_radius must be > 0, got {hex_radius}")
+    if spacing < 0:
+        raise ValueError(f"spacing must be >= 0, got {spacing}")
+
     base = Box(length, width, thickness)
 
     # Tiling step derived so the gap between any two adjacent hex edges equals spacing.
@@ -68,21 +79,25 @@ def make_hexagonal_mesh(
     # Derivation: without offset, three hexes at (0,0), (dx, ±dy/2) share a
     # vertex at (S, 0). Subtracting S from every x position moves that vertex
     # to the origin.
-    positions = [
-        (x, y)
-        for col in range(-nx, nx + 1)
-        for row in range(-ny, ny + 1)
-        # Odd columns offset by half a row to form the honeycomb stagger.
-        for x, y in [(col * dx - S, row * dy + (dy / 2 if col % 2 else 0))]
-        if abs(x) < inner_hx and abs(y) < inner_hy
-    ]
+    positions = []
+    for col in range(-nx, nx + 1):
+        for row in range(-ny, ny + 1):
+            # Odd columns offset by half a row to form the honeycomb stagger.
+            x = col * dx - S
+            y = row * dy + (dy / 2 if col % 2 else 0)
+            if abs(x) < inner_hx and abs(y) < inner_hy:
+                positions.append((x, y))
     _log.info("Unioning %d hex cutters...", len(positions))
+    if not positions:
+        return _as_compound(base)
 
     # Union all cutters into one shape, then subtract once — faster than
     # subtracting each hex from an increasingly complex result in a loop.
-    cutters = reduce(
-        operator.add,
-        (bd.Pos(x, y) * hex_template for x, y in positions),
+    cutters = _as_compound(
+        reduce(
+            operator.add,
+            (bd.Pos(x, y) * hex_template for x, y in positions),
+        )
     )
 
     if outer_border > 0:
@@ -92,10 +107,10 @@ def make_hexagonal_mesh(
         inner = Box(
             length - 2 * outer_border, width - 2 * outer_border, thickness
         )
-        cutters = cutters & inner
+        cutters = _as_compound(cutters & inner)
 
     _log.info("Subtracting cutters from base...")
-    result = base - cutters
+    result = _as_compound(base - cutters)
 
     if fillet_radius > 0:
         # Only fillet the top face — filleting all edges fails on the short, irregular
@@ -110,6 +125,7 @@ def make_hexagonal_mesh(
             ).edges()
             if e.geom_type.name == "LINE" and e.length >= 2 * fillet_radius
         )
-        result = result.fillet(fillet_radius, top_edges)
+        if top_edges:
+            result = _as_compound(result.fillet(fillet_radius, top_edges))
 
-    return cast(Compound, result)
+    return result
