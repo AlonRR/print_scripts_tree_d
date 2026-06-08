@@ -8,5 +8,9 @@
     },
     "python.analysis.typeCheckingMode": "basic",
     "python.defaultInterpreterPath": "${workspaceFolder}/.venv/Scripts/python.exe",
-    "python.analysis.autoImportCompletions": true
+    "python.analysis.autoImportCompletions": true,
+    "ruff.codeAction.disableRuleComment": {
+        "enable": false
+    },
+    "ruff.lineLength": 80
 }
