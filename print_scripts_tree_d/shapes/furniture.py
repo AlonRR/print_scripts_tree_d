@@ -176,6 +176,9 @@ def make_column(
                 dx, dy = cos_a * gusset_size, sin_a * gusset_size
                 pts = [(cx, cy, gz), (cx + dx, cy + dy, gz), (cx, cy, gz + gv)]
                 gusset_shapes.append(_gusset(pts, gusset_thickness))
-            column = _as_compound(column + reduce(operator.add, gusset_shapes))
+            if gusset_shapes:
+                column = _as_compound(
+                    column + reduce(operator.add, gusset_shapes)
+                )
 
     return column
