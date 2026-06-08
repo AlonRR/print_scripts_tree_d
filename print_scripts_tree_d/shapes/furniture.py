@@ -5,9 +5,25 @@ from functools import reduce
 from math import cos, radians, sin, sqrt
 from typing import Literal, cast
 
-from build123d import Box, Compound, Face, Part, Pos, ShapeList, Vector, Wire, extrude
+from build123d import (
+    Box,
+    Compound,
+    Face,
+    Part,
+    Pos,
+    ShapeList,
+    Vector,
+    Wire,
+    extrude,
+)
 
 _log = logging.getLogger(__name__)
+
+
+def _as_compound(result: object) -> Compound:
+    if isinstance(result, ShapeList):
+        return Compound(children=list(result))
+    return cast(Compound, result)
 
 
 def make_table(
@@ -49,7 +65,7 @@ def make_table(
         x = (px / 100 - 0.5) * (top_bb.X - col_x)
         y = (py / 100 - 0.5) * (top_bb.Y - col_y)
         # Column bottom sits on the tabletop top face; columns extend upward.
-        table = cast(Compound, table + Pos(x, y, top_bb.Z + col_z / 2) * column)
+        table = _as_compound(table + Pos(x, y, top_bb.Z + col_z / 2) * column)
 
     return table
 
@@ -61,7 +77,9 @@ def _scale_to_fit(part: Part, target_x: float, target_y: float) -> Part:
     return part.scale(factor)
 
 
-def _gusset(pts: list[tuple[float, float, float]], thickness: float) -> Compound:
+def _gusset(
+    pts: list[tuple[float, float, float]], thickness: float
+) -> Compound:
     """Right-triangle prism from three 3-D points, extruded by thickness/2 both ways."""
     wire = Wire.make_polygon([Vector(*p) for p in pts], close=True)
     return cast(Compound, extrude(Face(wire), thickness / 2, both=True))
@@ -119,31 +137,35 @@ def make_column(
     foot_z = -height / 2 + foot_height / 2
     body_z = -height / 2 + foot_height + body_height / 2
 
-    column = cast(Compound, Pos(0, 0, body_z) * body + Pos(0, 0, foot_z) * foot)
-
-    # Cache XY extents before clipping — the Z-clip doesn't change XY.
-    pre_clip_bb = column.bounding_box().size
-    hw, hd = pre_clip_bb.X / 2, pre_clip_bb.Y / 2
-    half_t = gusset_thickness / 2
-    inner_hw = sqrt(max(0.0, hw**2 - half_t**2))
-    inner_hd = sqrt(max(0.0, hd**2 - half_t**2))
+    column = _as_compound(Pos(0, 0, body_z) * body + Pos(0, 0, foot_z) * foot)
 
     # Clip to the intended total height — the body may be taller than the gap.
     # & can return ShapeList in some build123d versions.
     clipped = column & Box(10_000, 10_000, height)
-    column = cast(
-        Compound, Compound(children=list(clipped)) if isinstance(clipped, ShapeList) else clipped
-    )
+    column = _as_compound(clipped)
 
     if gusset_size > 0:
         if gusset_thickness <= 0:
-            _log.warning("gusset_size > 0 but gusset_thickness is 0 — no gussets added.")
+            _log.warning(
+                "gusset_size > 0 but gusset_thickness is 0 — no gussets added."
+            )
         else:
+            # XY extents are unaffected by the Z-clip above.
+            bb = column.bounding_box().size
+            hw, hd = bb.X / 2, bb.Y / 2
+            half_t = gusset_thickness / 2
+            inner_hw = sqrt(max(0.0, hw**2 - half_t**2))
+            inner_hd = sqrt(max(0.0, hd**2 - half_t**2))
+
             gz = height / 2 if gusset_position_z == "top" else -height / 2
             # Vertical arm goes toward the body: down from top, up from bottom.
             gv = -gusset_size if gusset_position_z == "top" else gusset_size
 
-            _log.info("Adding %d gussets at %s...", len(gusset_orientation_xy), gusset_position_z)
+            _log.info(
+                "Adding %d gussets at %s...",
+                len(gusset_orientation_xy),
+                gusset_position_z,
+            )
             gusset_shapes = []
             for angle_deg in gusset_orientation_xy:
                 angle_rad = radians(angle_deg)
@@ -152,14 +174,6 @@ def make_column(
                 dx, dy = cos_a * gusset_size, sin_a * gusset_size
                 pts = [(cx, cy, gz), (cx + dx, cy + dy, gz), (cx, cy, gz + gv)]
                 gusset_shapes.append(_gusset(pts, gusset_thickness))
-            if gusset_shapes:
-                all_gussets = reduce(operator.add, gusset_shapes)
-                merged = column + all_gussets
-                column = cast(
-                    Compound,
-                    Compound(children=list(merged))
-                    if isinstance(merged, ShapeList)
-                    else cast(Compound, merged),
-                )
+            column = _as_compound(column + reduce(operator.add, gusset_shapes))
 
     return column
