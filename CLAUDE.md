@@ -14,7 +14,7 @@ print_scripts_tree_d/
   shapes/
     __init__.py          # re-exports every public make_* function
     boxes.py             # make_rounded_box
-    holders.py           # make_panel_pin, make_tweezers_holder
+    clips.py             # make_cylinder_clip
     panels.py            # make_hexagonal_mesh
     furniture.py         # make_column, make_table
     primitives.py        # make_washer
@@ -73,6 +73,7 @@ def make_widget(length: float, width: float, ...) -> Compound:
 - Return type is always `build123d.Compound`.
 - Parameters are all explicit keyword arguments — no `**kwargs`.
 - Shape is **centred at the origin**; Z is the primary (height) axis.
+  Exception: `make_table` places the tabletop's bottom face at z=0 by design.
 - Pure function — no module-level state.
 
 ---
