@@ -145,6 +145,19 @@ def make_cylinder_clip(
     inner_r = id_ / 2
     # Leave at least 2 mm of cylinder wall as the spring-finger root.
     eff_tab_length = min(tab_length, body_depth - 2.0)
+    if tab_length > body_depth - 2.0:
+        _log.warning(
+            "tab_length %.3g leaves < 2 mm finger root; clamped to %.3g.",
+            tab_length,
+            body_depth - 2.0,
+        )
+    if flat_bottom and flat_fillet_r > wall_thickness:
+        _log.warning(
+            "flat_fillet_r %.3g exceeds wall_thickness %.3g; bore-top "
+            "edge may be skipped.",
+            flat_fillet_r,
+            wall_thickness,
+        )
     slot_length = min(eff_tab_length + 5.0, body_depth - 0.5)
     tab_spacing = 360.0 / tab_count
 
@@ -227,6 +240,13 @@ def make_cylinder_clip(
             eff_floor_r = min(
                 bore_floor_fillet_r, 0.9 * inner_r, 0.9 * root_h
             )
+            if bore_floor_fillet_r > eff_floor_r:
+                _log.warning(
+                    "bore_floor_fillet_r %.3g exceeds bore/root limit; "
+                    "clamped to %.3g.",
+                    bore_floor_fillet_r,
+                    eff_floor_r,
+                )
             floor_edge = [
                 e
                 for e in body.edges()
