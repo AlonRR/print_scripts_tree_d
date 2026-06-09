@@ -81,6 +81,38 @@ def make_widget(length: float, width: float, ...) -> Compound:
 
 ---
 
+## Warnings for clamped / ignored params
+
+`ValueError` is for params that **cannot** produce geometry. Many params,
+though, are *valid* but get silently capped or skipped — a fillet radius
+larger than the wall it rounds, a `tab_length` longer than the body, an
+`outer_border` that swallows the whole panel. Silent clamping hides bugs:
+the user sees geometry, just not the geometry they asked for.
+
+Whenever a user value is silently clamped or causes a step to be skipped,
+emit `_log.warning(...)` at the clamp site. Compute the effective value,
+compare against the request, and warn on mismatch:
+
+```python
+eff_r = min(requested_r, max_rim_r)
+if requested_r > max_rim_r:
+    _log.warning(
+        "top_fillet_radius %.3g exceeds wall limit; clamped to %.3g.",
+        requested_r, max_rim_r,
+    )
+```
+
+Rules:
+
+- Warn, don't raise — the shape still builds; this is informational.
+- State the offending param name, the value given, and what it was clamped
+  to (or that the step was skipped). Use `%.3g` for the numbers.
+- Warn once per param at the point of clamping, not inside loops over
+  edges/faces. Skip the warning when the request is within range (no noise
+  on sane defaults — check against the real defaults before committing).
+
+---
+
 ## build123d API rules
 
 Use the **direct (algebra) API** — never the builder context (`with BuildPart():`).

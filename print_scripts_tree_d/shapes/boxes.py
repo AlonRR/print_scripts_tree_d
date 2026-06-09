@@ -59,7 +59,15 @@ def make_rounded_box(
             f"wall_thickness {wall_thickness} leaves no interior "
             f"({inner_l:.1f} x {inner_w:.1f} mm)."
         )
-    eff_corner_r = min(corner_radius, min(length, width) / 2 * 0.99)
+    max_corner_r = min(length, width) / 2 * 0.99
+    if corner_radius > max_corner_r:
+        _log.warning(
+            "corner_radius %.3g exceeds half the smallest side; "
+            "clamped to %.3g.",
+            corner_radius,
+            max_corner_r,
+        )
+    eff_corner_r = min(corner_radius, max_corner_r)
     inner_corner_r = min(
         max(0.1, corner_radius - wall_thickness),
         min(inner_l, inner_w) / 2 * 0.99,
@@ -82,6 +90,13 @@ def make_rounded_box(
         eff_r = min(requested_r, max_rim_r)
         if eff_r <= 0:
             continue
+        if requested_r > max_rim_r:
+            _log.warning(
+                "%s_fillet_radius %.3g exceeds wall limit; clamped to %.3g.",
+                label,
+                requested_r,
+                max_rim_r,
+            )
         faces = shell.faces()
         rim_face = z_sel(
             faces, key=lambda f: f.center(CenterOf.BOUNDING_BOX).Z

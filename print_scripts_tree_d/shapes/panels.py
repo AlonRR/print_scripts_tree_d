@@ -50,6 +50,20 @@ def make_hexagonal_mesh(
         raise ValueError(f"hex_radius must be > 0, got {hex_radius}")
     if spacing < 0:
         raise ValueError(f"spacing must be >= 0, got {spacing}")
+    if outer_border > 0 and (
+        2 * outer_border >= length or 2 * outer_border >= width
+    ):
+        _log.warning(
+            "outer_border %.3g leaves no inner region for hex cutouts.",
+            outer_border,
+        )
+    if fillet_radius > thickness:
+        _log.warning(
+            "fillet_radius %.3g exceeds panel thickness %.3g; top edges "
+            "may be skipped.",
+            fillet_radius,
+            thickness,
+        )
 
     base = Box(length, width, thickness)
 

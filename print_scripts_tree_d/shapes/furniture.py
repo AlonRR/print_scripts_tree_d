@@ -57,6 +57,13 @@ def make_table(
             s = column.bounding_box().size
             _bb_cache[id(column)] = (s.X, s.Y, s.Z)
         col_x, col_y, col_z = _bb_cache[id(column)]
+        if not (0 <= px <= 100 and 0 <= py <= 100):
+            _log.warning(
+                "column_position (%.1f, %.1f) outside 0-100; column may "
+                "extend beyond the tabletop.",
+                px,
+                py,
+            )
         if col_x >= top_bb.X or col_y >= top_bb.Y:
             raise ValueError(
                 f"Column bounding box ({col_x:.1f} x {col_y:.1f}) must be smaller "
