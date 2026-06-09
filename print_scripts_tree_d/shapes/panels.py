@@ -36,7 +36,7 @@ def make_hexagonal_mesh(
         thickness:
             Panel thickness along the Z axis in mm.
         hex_radius:
-            circumradius (centre to vertex) of each hexagonal cutout in mm.
+            Circumradius (centre to vertex) of each hexagonal cutout in mm.
         spacing:
             Minimum gap between adjacent hexagon edges in mm.
         fillet_radius:

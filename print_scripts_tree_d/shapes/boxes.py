@@ -29,15 +29,22 @@ def make_rounded_box(
     post-hoc fillet), so rim fillets on the top and bottom faces work cleanly.
 
     Args:
-        length: Outer dimension along X in mm.
-        width: Outer dimension along Y in mm.
-        height: Height along Z in mm.
-        wall_thickness: Thickness of each wall in mm.
-        corner_radius: Radius of the outer vertical corner arcs in mm.
-        top_fillet_radius: Fillet radius on the top rim edges (inner + outer).
+        length:
+            Outer dimension along X in mm.
+        width:
+            Outer dimension along Y in mm.
+        height:
+            Height along Z in mm.
+        wall_thickness:
+            Thickness of each wall in mm.
+        corner_radius:
+            Radius of the outer vertical corner arcs in mm.
+        top_fillet_radius:
+            Fillet radius on the top rim edges (inner + outer).
             Clamped to wall_thickness / 2 * 0.95.
-        bottom_fillet_radius: Fillet radius on the bottom rim edges
-            (inner + outer). Same constraint.
+        bottom_fillet_radius:
+            Fillet radius on the bottom rim edges (inner + outer).
+            Same constraint.
     Returns:
         Hollow box compound centred at the origin.
     """

@@ -5,13 +5,14 @@ def make_washer(outer_diameter: float, hole_diameter: float, thickness: float) -
     """Create a flat washer (annular disc) centred at the origin.
 
     Args:
-        outer_diameter: Overall diameter of the washer in mm.
-        hole_diameter: Diameter of the central hole in mm. Must be less than outer_diameter.
-        thickness: Thickness of the washer along the Z axis in mm.
-
+        outer_diameter:
+            Overall diameter of the washer in mm.
+        hole_diameter:
+            Diameter of the central hole in mm. Must be less than outer_diameter.
+        thickness:
+            Thickness of the washer along the Z axis in mm.
     Returns:
         A washer-shaped compound (outer cylinder minus inner cylinder).
-
     Raises:
         ValueError: If hole_diameter >= outer_diameter.
     """
