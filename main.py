@@ -27,6 +27,7 @@ def _as_compound(result: object) -> Compound:
 
 
 def main() -> None:
+    """Build and export all demo models to the models/ directory."""
     logging.basicConfig(level=logging.INFO, format="%(message)s")
     models = Path("models")
     models.mkdir(exist_ok=True)
@@ -114,6 +115,7 @@ def main() -> None:
         flat_bottom=cp.flat_bottom,
         flat_fillet_r=cp.flat_fillet_r,
         flat_inner_margin=cp.flat_inner_margin,
+        bore_floor_fillet_r=cp.bore_floor_fillet_r,
     )
     tx = bp_clip.length / 2 + cp.body_depth / 2
     clip_rotated = Rot(0, 90, 0) * clip

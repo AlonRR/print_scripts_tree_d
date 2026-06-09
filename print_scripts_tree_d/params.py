@@ -98,6 +98,10 @@ class CylinderClipParams:
     #: How far past the inner bore wall the flat cut extends (mm),
     #: exposing the bore arc so it can be filleted.
     flat_inner_margin: float = 0.3
+    #: Fillet radius on the concave bore-floor corner (bore wall meets the
+    #: flange cap) in mm; 0 = no fillet. Only applies when the flange is
+    #: included.
+    bore_floor_fillet_r: float = 1.0
 
 
 @dataclass
