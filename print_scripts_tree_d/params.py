@@ -108,8 +108,11 @@ class CylinderClipParams:
 class TableParams:
     """Table assembly: hex-panel top with columns at specified positions."""
 
+    #: Tabletop panel parameters.
     top: HexPanelParams = field(default_factory=HexPanelParams)
+    #: Column shape parameters shared by all columns.
     column: ColumnParams = field(default_factory=ColumnParams)
+    #: Column placement as (x, y) percentages (0–100 per axis).
     column_positions: list[tuple[float, float]] = field(
         default_factory=lambda: [
             (0, 0),

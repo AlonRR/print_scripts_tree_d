@@ -11,11 +11,13 @@ def save_stl(shape: Compound, path: Path | str, validate: bool = True) -> None:
     """Export *shape* to an STL file and optionally verify it is print-ready.
 
     Args:
-        shape: The build123d Compound to export.
-        path: Destination file path. Parent directories must exist.
-        validate: If True, load the exported mesh with trimesh and assert that
-                  it is watertight and has positive volume.
-
+        shape:
+            The build123d Compound to export.
+        path:
+            Destination file path. Parent directories must exist.
+        validate:
+            If True, load the exported mesh with trimesh and assert that
+            it is watertight and has positive volume.
     Raises:
         AssertionError: If validation is enabled and the mesh fails either check.
     """

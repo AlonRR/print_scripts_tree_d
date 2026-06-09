@@ -35,9 +35,10 @@ def make_table(
 
     Args:
         table_top:
-            A Part representing the tabletop, centered at the origin.
+            A Part or Compound representing the tabletop, centered at the origin.
         columns:
-            A list of Parts representing the columns, each centered at the origin.
+            A list of Parts or Compounds representing the columns, each
+            centered at the origin.
         column_positions:
             A list of (x, y) tuples in the range 0–100, where (0,0) places the
             column's outer corner flush with the tabletop corner and (100,100) does
@@ -118,9 +119,8 @@ def make_column(
             "top" (default) places gussets at the top of the column; "bottom" places
             them at the bottom. Used when gusset_size > 0.
         gusset_orientation_xy:
-            A list or tuple of four angles in degrees, specifying the XY rotation of
-            each gusset around the leg. Used when gusset_size > 0.
-            Also used to determine number of gussets.
+            Angles in degrees specifying the XY rotation of each gusset
+            around the column. Used when gusset_size > 0.
     Returns:
         A compound representing the column.
     """
