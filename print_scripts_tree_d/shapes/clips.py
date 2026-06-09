@@ -74,6 +74,7 @@ def make_cylinder_clip(
     flat_bottom: bool = False,
     flat_fillet_r: float = 0.0,
     flat_inner_margin: float = 0.3,
+    bore_floor_fillet_r: float = 0.0,
 ) -> Compound:
     """Hollow cylindrical snap clip that mounts into a circular bore.
 
@@ -120,6 +121,10 @@ def make_cylinder_clip(
             How far past the inner bore wall to place the
             flat cut (mm), so the inner bore arc is visible and fillet-able
             on the flat face.
+        bore_floor_fillet_r:
+            Fillet radius on the concave corner where the bore wall meets
+            the flange cap that floors the blind hole (mm); 0 = no fillet.
+            Only applies when include_flange is True.
     Returns:
         Clip compound with insertion along +Z, body centred at the origin.
     """
@@ -137,6 +142,7 @@ def make_cylinder_clip(
 
     tip_z = body_depth / 2
     outer_r = od / 2
+    inner_r = id_ / 2
     # Leave at least 2 mm of cylinder wall as the spring-finger root.
     eff_tab_length = min(tab_length, body_depth - 2.0)
     slot_length = min(eff_tab_length + 5.0, body_depth - 0.5)
@@ -151,17 +157,35 @@ def make_cylinder_clip(
 
     # Hollow cylinder body centred at Z = 0.
     body: Compound = Compound(children=[Cylinder(outer_r, body_depth)])
-    body = _as_compound(body - Cylinder(id_ / 2, body_depth + 1))
+    body = _as_compound(body - Cylinder(inner_r, body_depth + 1))
+
+    # Round the inner bore-top edge now, while it is still a complete
+    # circle.  The slot cuts below segment it into arcs that OCC cannot
+    # re-fillet; after Rot(0, 90, 0) this edge faces the print-down side.
+    if flat_bottom and flat_fillet_r > 0:
+        bore_circumference = 2 * pi * inner_r
+        bore_top = [
+            e
+            for e in body.edges()
+            if e.geom_type.name == "CIRCLE"
+            and e.center().Z > 0
+            and e.length >= 2 * flat_fillet_r
+            and abs(e.length - bore_circumference) < 1.0
+        ]
+        if bore_top:
+            body = _as_compound(body.fillet(flat_fillet_r, bore_top))
 
     # Longitudinal slot cuts between adjacent tabs free the spring fingers.
+    # Single-sided radial slots (one per gap); a full-diameter box would
+    # also cut the gap 180° away, which lands on a tab for odd tab_count.
     slot_z = tip_z - slot_length / 2
     _log.info("Cutting %d spring-finger slots...", tab_count)
     slots = reduce(
         operator.add,
         (
             Rot(0, 0, i * tab_spacing + tab_spacing / 2)
-            * Pos(0, 0, slot_z)
-            * Box(od + 4, slot_width, slot_length)
+            * Pos(od / 4, 0, slot_z)
+            * Box(od / 2 + 2, slot_width, slot_length)
             for i in range(tab_count)
         ),
     )
@@ -191,29 +215,35 @@ def make_cylinder_clip(
         flange_z = -(body_depth + flange_thickness) / 2
         flange_disc = Pos(0, 0, flange_z) * Cylinder(flange_r, flange_thickness)
         body = _as_compound(body + flange_disc)
+
+        # Round the concave corner where the bore wall meets the flange cap
+        # that floors the blind hole. Cap the radius to the floor radius and
+        # to the unslotted root ring, so the fillet stays on a complete
+        # circle below the spring-finger slots.
+        if bore_floor_fillet_r > 0:
+            floor_z = -body_depth / 2
+            bore_circ = 2 * pi * inner_r
+            root_h = body_depth - slot_length
+            eff_floor_r = min(
+                bore_floor_fillet_r, 0.9 * inner_r, 0.9 * root_h
+            )
+            floor_edge = [
+                e
+                for e in body.edges()
+                if e.geom_type.name == "CIRCLE"
+                and abs(e.length - bore_circ) < 1.0
+                and abs(e.center().Z - floor_z) < 0.5
+            ]
+            if eff_floor_r > 0 and floor_edge:
+                body = _as_compound(body.fillet(eff_floor_r, floor_edge))
     result = body
 
     if flat_bottom:
-        inner_r = id_ / 2
         cut_x = inner_r - flat_inner_margin
         large = flange_r * 2 + 4
-        depth = body_depth + flange_thickness + 4
-        if flat_fillet_r > 0:
-            # Fillet the inner bore top edge before the flat cut while it
-            # is still a clean full circle.  After Rot(0, 90, 0) this edge
-            # maps to the bottom of the clip, improving print quality.
-            bore_circumference = 2 * pi * inner_r
-            bore_top = [
-                e
-                for e in result.edges()
-                if e.geom_type.name == "CIRCLE"
-                and e.center().Z > 0
-                and e.length >= 2 * flat_fillet_r
-                and abs(e.length - bore_circumference) < 1.0
-            ]
-            if bore_top:
-                result = _as_compound(result.fillet(flat_fillet_r, bore_top))
-        flat_cut = Pos(cut_x + large / 2, 0, 0) * Box(large, large, depth)
+        # Box spans the whole clip in Z (and beyond) so the cut face stays
+        # flat regardless of flange_thickness.
+        flat_cut = Pos(cut_x + large / 2, 0, 0) * Box(large, large, 10_000)
         result = _as_compound(result - flat_cut)
 
     return result
