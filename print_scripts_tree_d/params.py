@@ -172,3 +172,17 @@ class TableParams:
             (100, 100),
         ]
     )
+
+@dataclass
+class ScrewPartParams:
+    """Parameters for a screw-shaped part, optionally threaded and/or hollow."""
+
+    #: Outer (crest) diameter of the screw in mm.
+    outer_diameter: float = 5.0
+    #: Thickness of the screw along the Z axis in mm.
+    thickness: float = 20.0
+    #: Thread pitch in mm. 0 creates a smooth cylinder.
+    thread_pitch: float = 0.0
+    #: Central through-bore diameter in mm, making the screw hollow. 0 leaves
+    #: it solid; must be less than outer_diameter.
+    bore_diameter: float = 2.0
