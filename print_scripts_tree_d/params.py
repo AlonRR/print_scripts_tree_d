@@ -24,6 +24,57 @@ class HexPanelParams:
 
 
 @dataclass
+class WasherParams:
+    """Parameters for a flat washer (annular disc)."""
+
+    #: Overall diameter of the washer in mm.
+    outer_diameter: float = 20.0
+    #: Diameter of the central hole in mm. Must be less than outer_diameter.
+    hole_diameter: float = 10.0
+    #: Thickness of the washer along the Z axis in mm.
+    thickness: float = 5.0
+
+
+@dataclass
+class MagnetRingPanelParams:
+    """Circular panel with a central bore and evenly spaced magnet pockets."""
+
+    #: Overall diameter of the panel in mm.
+    outer_diameter: float = 60.0
+    #: Panel thickness along Z in mm.
+    thickness: float = 4.0
+    #: Diameter of the central bore hole in mm.
+    bore_diameter: float = 12.0
+    #: Diameter of each magnet pocket in mm.
+    magnet_diameter: float = 6.0
+    #: Pocket depth for each magnet in mm.
+    magnet_thickness: float = 3.0
+    #: Number of magnet pockets arranged around the bore.
+    number_of_magnets: int = 6
+    #: Radial clearance per side for each magnet pocket in mm.
+    clearance: float = 0.2
+    #: Extra radial margin between the bore, magnet ring, and outer edge in mm.
+    ring_margin: float = 0.5
+    #: Fraction in [0, 1) by which the walls between corners curve inward.
+    wall_concavity: float = 0.35
+    #: Bore diameter at the top face in mm; 0 keeps a straight cylindrical
+    #: bore, otherwise the bore is a cone from bore_diameter to this.
+    bore_top_diameter: float = 0.0
+    #: Rounding radius for the bore mouth at the top/bottom faces in mm.
+    bore_fillet_radius: float = 0.0
+    #: Rounding radius for the outer top/bottom perimeter in mm. Capped at
+    #: (thickness - magnet_thickness) / 2.
+    outer_fillet_radius: float = 0.0
+    #: Small edge-break radius in mm at the magnet slot floor/ceiling. Kept
+    #: small so the slot floor and ceiling stay flat for the flat-faced magnet.
+    pocket_fillet_radius: float = 0.3
+    #: Radial length in mm of a small obround slit cut into the top face above each magnet.
+    top_slot_length: float = 2.0
+    #: Tangential width in mm of that obround top slit.
+    top_slot_width: float = 1.0
+
+
+@dataclass
 class ColumnParams:
     """Structural column with optional gusset supports."""
 
