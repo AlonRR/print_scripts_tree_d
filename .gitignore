@@ -26,16 +26,9 @@ env/
 !.vscode/extensions.json
 !.vscode/settings.json
 
-# Generated 3D output files (remove these lines if you want to version output models)
-models/*.stl
-models/*.step
-models/*.stp
-models/*.3mf
-models/*.obj
-models/*.glb
-models/*.gltf
-models/*.dxf
-models/*.svg
+# Generated 3D output files and all sub-folders (keep the .gitkeep placeholder)
+models/*
+!models/.gitkeep
 
 # OS noise
 .DS_Store
