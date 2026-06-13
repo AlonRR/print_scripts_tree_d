@@ -5,9 +5,9 @@ description = "Parametric 3D model generation scripts for 3D printing"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "build123d",
     "trimesh",
     "numpy",
+    "build123d>=0.10.0",
 ]
 
 [dependency-groups]
