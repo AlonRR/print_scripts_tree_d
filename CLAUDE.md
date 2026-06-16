@@ -38,7 +38,7 @@ print_scripts_tree_d/
     primitives.py        # make_washer, make_magnet, make_screw_part
 main.py                  # one-shot script that builds and exports all models
 sandbox.ipynb            # interactive notebook for iterating on shapes
-scratch/                 # local-only dev scripts (git-ignored); see below
+scratch/                 # interactive dev scripts (tracked); see below
 models/                  # generated output files (git-ignored)
 ```
 
