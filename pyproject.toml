@@ -17,6 +17,12 @@ dev = [
     "pytest",
     "ipykernel",
     "ocp-vscode",
+    "matplotlib>=3.11.0",
+    "shapely>=2.1.2",
+    "networkx>=3.6.1",
+    "rtree>=1.4.1",
+    "mapbox-earcut>=2.0.0",
+    "pyvista>=0.48.4",
 ]
 
 [build-system]
@@ -33,9 +39,14 @@ target-version = "py313"
 [tool.ruff.lint]
 select = ["E", "F", "I"]
 
+[tool.ruff.lint.per-file-ignores]
+# Scratch files: wildcard re-exports, mid-cell imports, and interactive magics
+"scratch/*.py" = ["F401", "F403", "F405", "E402"]
+
 [tool.mypy]
 strict = true
 python_version = "3.13"
+exclude = ["scratch"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

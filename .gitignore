@@ -30,6 +30,9 @@ env/
 models/*
 !models/.gitkeep
 
+# Scratch / interactive dev scripts (local only)
+scratch/
+
 # OS noise
 .DS_Store
 Thumbs.db
