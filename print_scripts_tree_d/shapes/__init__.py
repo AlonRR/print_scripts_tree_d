@@ -6,8 +6,10 @@ from print_scripts_tree_d.shapes.panels import (
     make_magnet_ring_panel,
 )
 from print_scripts_tree_d.shapes.primitives import (
+    ThreadProfile,
     make_magnet,
     make_screw_part,
+    make_threaded_rod,
     make_washer,
 )
 
@@ -20,5 +22,7 @@ __all__ = [
     "make_table",
     "make_column",
     "make_screw_part",
+    "make_threaded_rod",
     "make_magnet",
+    "ThreadProfile",
 ]

@@ -2,7 +2,7 @@ import logging
 import operator
 from functools import reduce
 from math import atan2, ceil, cos, degrees, pi, radians, sin, sqrt
-from typing import cast
+from typing import Any, cast
 
 import build123d as bd
 from build123d import (
@@ -26,7 +26,7 @@ def _as_compound(result: object) -> Compound:
 
 
 def _fillet_retry(
-    shape: Compound, radius: float, edges: ShapeList
+    shape: Compound, radius: float, edges: ShapeList[Any]
 ) -> tuple[Compound, float]:
     """Fillet ``edges`` of ``shape``, shrinking the radius on OCC failure.
 
@@ -42,6 +42,49 @@ def _fillet_retry(
         except Exception:
             applied *= 0.6
     return shape, 0.0
+
+
+def _slanted_slot(
+    length: float, width: float, z_bottom: float, z_apex: float
+) -> Compound:
+    """An obround release-slot cutter (along local X, +X = radially outward)
+    whose roof is a single 45-degree slant rising outward to a tall outer wall.
+
+    The wall-to-slant junction and the whole top opening are rounded together in
+    one fillet pass on the slanted top face (which becomes the slot mouth when
+    subtracted), so the cut self-supports for FDM — no flat overhang — and opens
+    up-and-outward with a smooth rounded mouth. The radial profile is built in
+    the X-Z plane and extruded along the width, then intersected with a plain
+    obround prism to round the ends. Spans ``z_bottom`` to ``z_apex``.
+    """
+    w = width
+    half_l = length / 2.0
+    z_inner = z_apex - length  # roof height at the inner wall (45-degree slope)
+    a = bd.Vector(half_l, 0, z_bottom)  # outer-bottom
+    c = bd.Vector(half_l, 0, z_apex)  # outer-top (apex; tall outer wall)
+    if z_inner > z_bottom + 1e-6:
+        # Quad: short inner wall, slope up to the tall outer wall.
+        b = bd.Vector(-half_l, 0, z_inner)
+        d = bd.Vector(-half_l, 0, z_bottom)
+        prof = bd.Wire(
+            [bd.Line(a, c), bd.Line(c, b), bd.Line(b, d), bd.Line(d, a)]
+        )
+    else:
+        # Triangle: the 45-degree roof meets the floor before the inner wall.
+        x_meet = z_bottom - z_apex + half_l
+        m = bd.Vector(x_meet, 0, z_bottom)
+        prof = bd.Wire([bd.Line(a, c), bd.Line(c, m), bd.Line(m, a)])
+    prism = extrude(bd.make_face(prof), w / 2, both=True)
+    obround = bd.Pos(0, 0, (z_bottom + z_apex) / 2) * extrude(
+        bd.SlotOverall(length, w), (z_apex - z_bottom) / 2, both=True
+    )
+    cutter = _as_compound(prism & obround)
+    # Round the wall-slant junction and the whole mouth in one pass: fillet the
+    # perimeter of the slanted top face (the highest face) — it is the opening.
+    top = max(cutter.faces(), key=lambda f: f.center(CenterOf.BOUNDING_BOX).Z)
+    edges = ShapeList(list(top.outer_wire().edges()))
+    cutter, _applied = _fillet_retry(cutter, 0.45 * w, edges)
+    return cutter
 
 
 def make_hexagonal_mesh(
@@ -188,6 +231,9 @@ def make_magnet_ring_panel(
     pocket_fillet_radius: float = 0.3,
     top_slot_length: float = 2.0,
     top_slot_width: float = 1.0,
+    holder: Compound | None = None,
+    holder_base_fillet_radius: float = 0.0,
+    release_cut_into_holder: float = 0.0,
 ) -> Compound:
     """Create a flat rounded-corner regular-prism panel with magnet pockets.
 
@@ -245,8 +291,24 @@ def make_magnet_ring_panel(
             magnet cavity. 0 (or 0 width) adds no slit.
         top_slot_width:
             Tangential width in mm of that obround top slit.
+        holder:
+            An optional pre-built part (e.g. from ``make_threaded_rod``) to
+            mount centred on the bore axis, sitting on the top face — like
+            ``make_table`` takes its columns. The part is assumed centred at the
+            origin; it is lifted so its bottom rests on the panel top. Its bore,
+            if any, should match the panel bore so the channel stays continuous.
+            None adds no holder.
+        holder_base_fillet_radius:
+            If > 0 and a holder is mounted, round the concave seam where the
+            holder's smooth shank meets the panel top into a cove of this radius
+            in mm (capped by OCC; reduced and warned if it cannot be built).
+        release_cut_into_holder:
+            If > 0 and a holder is mounted, extend the magnet-release top slots
+            this far in mm up into the holder, so a magnet can still be pushed
+            out from above where the holder base caps the slot. Capped at the
+            holder height.
     Returns:
-        A compound representing the panel.
+        A compound representing the panel (with the holder fused in, if given).
     """
     if outer_diameter <= 0:
         raise ValueError(f"outer_diameter must be > 0, got {outer_diameter}")
@@ -292,6 +354,15 @@ def make_magnet_ring_panel(
         raise ValueError(f"top_slot_length must be >= 0, got {top_slot_length}")
     if top_slot_width < 0:
         raise ValueError(f"top_slot_width must be >= 0, got {top_slot_width}")
+    if holder_base_fillet_radius < 0:
+        raise ValueError(
+            f"holder_base_fillet_radius must be >= 0, got "
+            f"{holder_base_fillet_radius}"
+        )
+    if release_cut_into_holder < 0:
+        raise ValueError(
+            f"release_cut_into_holder must be >= 0, got {release_cut_into_holder}"
+        )
 
     bore_radius = bore_diameter / 2
     magnet_radius = magnet_diameter / 2
@@ -521,15 +592,46 @@ def make_magnet_ring_panel(
     # at the magnet's inner edge (closest to the bore, local x = -slit_length/2)
     # and aligned with the slot. It breaks down into the magnet cavity from the
     # top while leaving the bottom of the panel solid.
+    # The slot normally stops just above the top face. When a holder caps it,
+    # extend it up into the holder by release_cut_into_holder so the magnet can
+    # still be pushed out from above (capped at the holder height).
+    vent_top = thickness / 2 + 0.5
+    if holder is not None and release_cut_into_holder > 0:
+        max_rel = holder.bounding_box().size.Z - 0.5
+        rel = min(release_cut_into_holder, max_rel)
+        if release_cut_into_holder > max_rel:
+            _log.warning(
+                "release_cut_into_holder %.3g exceeds holder height; clamped "
+                "to %.3g.",
+                release_cut_into_holder,
+                rel,
+            )
+        vent_top = thickness / 2 + rel
+
     vent_template = None
     if top_slot_length > 0 and top_slot_width > 0:
         vent_bottom = magnet_thickness / 2 - 0.5  # just inside the cavity
-        vent_h = thickness / 2 + 0.5 - vent_bottom
-        if vent_h > 0:
+        if vent_top - vent_bottom > 0:
             vent_len = max(top_slot_length, top_slot_width)
-            vent_template = bd.Pos(
-                -slit_length / 2 + top_slot_length / 2, 0, vent_bottom
-            ) * extrude(bd.SlotOverall(vent_len, top_slot_width), vent_h)
+            if holder is not None and release_cut_into_holder > 0:
+                # Release slot into the holder: a single 45-degree roof rising
+                # radially outward, with the wall-slant junction and the whole
+                # mouth rounded — self-supporting, opens up-and-outward.
+                slot = _slanted_slot(
+                    vent_len, top_slot_width, vent_bottom, vent_top
+                )
+            else:
+                # Plain top vent (open at the top face) when there is no holder.
+                slot = _as_compound(
+                    bd.Pos(0, 0, vent_bottom)
+                    * extrude(
+                        bd.SlotOverall(vent_len, top_slot_width),
+                        vent_top - vent_bottom,
+                    )
+                )
+            vent_template = (
+                bd.Pos(-slit_length / 2 + top_slot_length / 2, 0, 0) * slot
+            )
 
     angle_step = 360 / number_of_magnets
     pockets = []
@@ -546,8 +648,11 @@ def make_magnet_ring_panel(
         if vent_template is not None:
             vents.append(placement * vent_template)
 
-    cutters = [bore, *pockets, *vents]
-    result = _as_compound(body - _as_compound(reduce(operator.add, cutters)))
+    # Bore and magnet pockets are cut now; the release slots are cut last (after
+    # any holder is mounted) so they can also breach the holder base.
+    result = _as_compound(
+        body - _as_compound(reduce(operator.add, [bore, *pockets]))
+    )
 
     if outer_fillet_radius > 0:
         # Round the outer top/bottom perimeter. The vertical corners are baked
@@ -634,5 +739,64 @@ def make_magnet_ring_panel(
                 "bore_fillet_radius %.3g could not be applied; skipped.",
                 bore_fillet_radius,
             )
+
+    # Mount the holder on the bore axis. Done after the panel rim/bore fillets,
+    # which select faces by extreme Z and would otherwise grab the holder's
+    # top/bottom instead of the panel's.
+    if holder is not None:
+        result = _as_compound(
+            result
+            + bd.Pos(0, 0, thickness / 2 - holder.bounding_box().min.Z) * holder
+        )
+        if holder_base_fillet_radius > 0:
+            # Curved cove where the holder's smooth shank meets the top face,
+            # built as a revolved quarter-round ring unioned at the base. This
+            # is robust at any radius, unlike an OCC edge-fillet on this already-
+            # filleted solid (which collapses to a sub-millimetre radius here).
+            hb = holder.bounding_box()
+            holder_r = hb.size.X / 2
+            r_eff = min(holder_base_fillet_radius, 0.4 * hb.size.Z, holder_r)
+            if holder_base_fillet_radius > r_eff:
+                _log.warning(
+                    "holder_base_fillet_radius %.3g exceeds the shank/panel "
+                    "limit; clamped to %.3g.",
+                    holder_base_fillet_radius,
+                    r_eff,
+                )
+            z0 = thickness / 2
+            # Quarter-round profile filling the reentrant corner: up the shank
+            # wall, around the arc, back along the top face. Revolved about Z.
+            p1 = bd.Vector(holder_r, 0, z0)
+            p2 = bd.Vector(holder_r, 0, z0 + r_eff)
+            p3 = bd.Vector(holder_r + r_eff, 0, z0)
+            mid = bd.Vector(
+                holder_r + 0.2929 * r_eff, 0, z0 + 0.2929 * r_eff
+            )
+            cove_face = bd.make_face(
+                bd.Wire(
+                    [
+                        bd.Line(p1, p2),
+                        bd.ThreePointArc(p2, mid, p3),
+                        bd.Line(p3, p1),
+                    ]
+                )
+            )
+            try:
+                result = _as_compound(
+                    result + bd.revolve(cove_face, axis=bd.Axis.Z)
+                )
+            except Exception:
+                _log.warning(
+                    "holder_base_fillet_radius %.3g could not be applied; "
+                    "skipped.",
+                    holder_base_fillet_radius,
+                )
+
+    # Cut the release slots last so they breach both the magnet cavities and,
+    # where they overlap, the holder base.
+    if vents:
+        result = _as_compound(
+            result - _as_compound(reduce(operator.add, vents))
+        )
 
     return result
