@@ -72,6 +72,12 @@ class MagnetRingPanelParams:
     top_slot_length: float = 2.0
     #: Tangential width in mm of that obround top slit.
     top_slot_width: float = 1.0
+    #: Cove radius in mm where a mounted holder's smooth shank meets the top
+    #: face. 0 = no cove. Only applies when a holder is passed to the function.
+    holder_base_fillet_radius: float = 0.0
+    #: Distance in mm the magnet-release slots cut up into a mounted holder, so
+    #: magnets can still be pushed out from above. Only applies with a holder.
+    release_cut_into_holder: float = 0.0
 
 
 @dataclass
@@ -129,7 +135,7 @@ class CylinderClipParams:
     #: Flange disc thickness in mm.
     flange_thickness: float = 2.5
     #: Number of snap tabs (and matching slot cuts).
-    tab_count: int = 4
+    tab_count: int = 2
     #: Radial protrusion of each tab beyond the bore wall in mm.
     tab_protrusion: float = 0.8
     #: Axial height of each tab wedge in mm.
@@ -140,6 +146,9 @@ class CylinderClipParams:
     slot_width: float = 1.2
     #: Per-side radial clearance for bore fit in mm.
     clearance: float = 0.2
+    #: Fillet radius on the leading insertion-tip outer rim in mm, easing
+    #: the clip into the bore; 0 = no fillet.
+    lead_in_fillet: float = 0.8
     #: Cut the +X face flush with the clip body so the flange does not
     #: protrude past the print surface when printed flat.
     flat_bottom: bool = True
@@ -177,12 +186,68 @@ class TableParams:
 class ScrewPartParams:
     """Parameters for a screw-shaped part, optionally threaded and/or hollow."""
 
-    #: Outer (crest) diameter of the screw in mm.
+    #: Outer body diameter in mm. For external thread: crest diameter.
+    #: For internal thread: outer body wall diameter.
     outer_diameter: float = 5.0
-    #: Thickness of the screw along the Z axis in mm.
+    #: Length along the Z axis in mm.
     thickness: float = 20.0
-    #: Thread pitch in mm. 0 creates a smooth cylinder.
+    #: Thread pitch in mm. 0 creates a smooth cylinder (or smooth bore).
     thread_pitch: float = 0.0
-    #: Central through-bore diameter in mm, making the screw hollow. 0 leaves
-    #: it solid; must be less than outer_diameter.
+    #: For external thread: optional central through-bore in mm. 0 = solid.
+    #: For internal thread: the bore that receives the thread (must be > 0).
     bore_diameter: float = 2.0
+    #: Included V-angle of the thread profile in degrees. 60 = ISO metric,
+    #: 55 = Whitworth. Controls flank width relative to thread depth.
+    thread_angle: float = 60.0
+    #: Chamfer length at the insertion tip in mm; 0 = no chamfer.
+    #: Applies to external thread only; capped at half of thickness.
+    lead_in_length: float = 0.0
+    #: Outer diameter at the tip of the lead-in chamfer in mm. 0 defaults to
+    #: the thread root diameter (or a 45° taper when thread_pitch=0).
+    lead_in_tip_diameter: float = 0.0
+    #: Cut an internal threaded bore (nut) instead of an external ridge.
+    #: bore_diameter must be > 0 when True.
+    internal_thread: bool = False
+    #: Radial thread height (crest to root) in mm; 0 derives as 0.6 * pitch.
+    #: Set to (outer_diameter - minor_diameter) / 2 to match a measured thread.
+    thread_depth: float = 0.0
+    #: Axial width of the thread crest flat in mm; 0 derives it.
+    thread_crest_width: float = 0.0
+    #: Axial width of the thread root flat in mm; 0 derives the tooth from
+    #: thread_angle (override it for a trapezoidal/square thread).
+    thread_root_width: float = 0.0
+
+
+@dataclass
+class ThreadedRodParams:
+    """A rod with a smooth shank (bottom) and an externally threaded end (top)."""
+
+    #: Outer (thread crest) diameter in mm.
+    outer_diameter: float = 14.0
+    #: Overall length along the Z axis in mm.
+    thickness: float = 16.4
+    #: Length of the smooth shank at the bottom (-Z) in mm; the rest is threaded.
+    #: Must be > 0 and < thickness.
+    smooth_length: float = 8.2
+    #: Thread pitch in mm (crest-to-crest along the axis). Must be > 0.
+    thread_pitch: float = 2.0
+    #: Optional central through-bore in mm. 0 = solid; must be < outer_diameter.
+    bore_diameter: float = 8.5
+    #: Included V-angle of the thread profile in degrees (60 = ISO metric).
+    thread_angle: float = 60.0
+    #: Radial thread height (crest to root) in mm; 0 derives as 0.6 * pitch.
+    #: Set to (outer_diameter - minor_diameter) / 2 to match a measured thread.
+    thread_depth: float = 0.0
+    #: Axial width of the thread crest flat in mm; 0 derives it.
+    thread_crest_width: float = 0.0
+    #: Axial width of the thread root flat in mm; 0 derives the tooth from
+    #: thread_angle (override it for a trapezoidal/square thread).
+    thread_root_width: float = 0.0
+    #: Chamfer length at the threaded tip (+Z) in mm; 0 = none. Crests taper to
+    #: lead_in_tip_diameter so the screw starts easily into a mating part.
+    lead_in_length: float = 0.0
+    #: Outer diameter at the lead-in tip in mm; 0 defaults to the thread root.
+    lead_in_tip_diameter: float = 0.0
+    #: Length in mm over which the thread fades out into the smooth shank;
+    #: 0 = abrupt transition.
+    runout_length: float = 0.0
