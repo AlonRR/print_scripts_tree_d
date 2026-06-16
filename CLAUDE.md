@@ -5,6 +5,24 @@ All dimensions are in **millimetres**. All shapes are validated as watertight be
 
 ---
 
+## Development commands
+
+Tooling is managed with **uv** (Python 3.13); run everything through it:
+
+| Task | Command |
+|---|---|
+| Sync dependencies | `uv sync` |
+| All tests | `uv run pytest` |
+| One test | `uv run pytest tests/test_shapes.py -k <name>` |
+| Lint (pyflakes + import sort) | `uv run ruff check .` |
+| Type-check (strict) | `uv run mypy print_scripts_tree_d` |
+| Build + export every model | `uv run python main.py` |
+
+build123d pulls in OCP/OpenCASCADE; a single shape build (and each test) can
+take seconds, so the suite is slow by unit-test standards — that is expected.
+
+---
+
 ## Project structure
 
 ```
@@ -15,12 +33,13 @@ print_scripts_tree_d/
     __init__.py          # re-exports every public make_* function
     boxes.py             # make_rounded_box
     clips.py             # make_cylinder_clip
-    panels.py            # make_hexagonal_mesh
+    panels.py            # make_hexagonal_mesh, make_magnet_ring_panel
     furniture.py         # make_column, make_table
-    primitives.py        # make_washer
+    primitives.py        # make_washer, make_magnet, make_screw_part
 main.py                  # one-shot script that builds and exports all models
 sandbox.ipynb            # interactive notebook for iterating on shapes
-models/                  # generated STL files (git-ignored)
+scratch/                 # local-only dev scripts (git-ignored); see below
+models/                  # generated output files (git-ignored)
 ```
 
 ---
@@ -190,18 +209,30 @@ not meet at the same vertex.
 
 ## Formatting
 
-Line length is **80 characters** (enforced by ruff). Keep all lines within
-that limit.
+`ruff` enforces a **80-character** limit, but the existing code wraps closer
+to **80** — match the surrounding file.
 
 ---
 
 ## Testing and validation
 
-There is no automated test suite. Correctness is verified by:
+Correctness is verified by:
 
-1. `save_stl` — asserts watertight mesh and positive volume. This is the
-   primary pass/fail gate; a shape that raises here is not print-ready.
-2. Visual inspection in `sandbox.ipynb` via `ocp_vscode`.
+1. **`pytest` suite** (`tests/test_shapes.py`) — builds each shape and asserts
+   geometry invariants (bounding box, volume vs. a solid, that invalid params
+   raise). Add a test per new `make_*`. Tests are coarse, not exhaustive.
+2. `save_stl` — asserts watertight mesh and positive volume. This is the
+   primary pass/fail gate; a shape that raises here is not print-ready. Tests
+   and `main.py` both go through it.
+3. Visual inspection via `ocp_vscode`:
+   - **`sandbox.ipynb`** — good for multi-shape assembly work. The
+     `preview(make, params, **overrides)` helper builds from a params dataclass
+     (dropping fields the function doesn't accept), shows, and returns the shape.
+   - **`scratch/try_<name>.py`** — preferred for iterating a single new shape.
+     Copy `scratch/template.py`, replace `SHAPENAME`, run cells with Shift+Enter
+     in VS Code Interactive. `%autoreload 2` hot-reloads `print_scripts_tree_d`
+     on every cell run; a bad cell doesn't hang the kernel. `scratch/_dev.py`
+     provides all shared imports and helpers via `from _dev import *`.
 
 If `save_stl` raises an `AssertionError`:
 
@@ -237,6 +268,6 @@ Log progress at `INFO` for operations that take noticeable time (large
 boolean unions, fillet passes). Callers configure the root logger; shape
 modules must not call `basicConfig`.
 
-## Git 
+## Git
 
-Always ask with a clear commit message before performing a commit even in Permission bypass mode. 
+Always ask with a clear commit message before performing a commit even in Permission bypass mode.
