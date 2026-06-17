@@ -271,14 +271,22 @@ def _thread_profile(
     # Cap so adjacent turns never overlap (2*half_w < pitch) and the flank fits
     # the radius — overlapping teeth make the helical sweep self-intersect.
     half_w = min(base_hw, 0.45 * outer_r, 0.48 * pitch)
-    if half_w < base_hw and root_width <= 0:
-        _log.warning(
-            "thread_angle %.3g / pitch %.3g make the flank too wide; half-width "
-            "clamped to %.3g (effective angle reduced).",
-            angle,
-            pitch,
-            half_w,
-        )
+    if half_w < base_hw:
+        if root_width > 0:
+            _log.warning(
+                "thread_root_width %.3g is too narrow for the tooth at this "
+                "pitch/diameter; root flat widened to %.3g.",
+                root_width,
+                pitch - 2.0 * half_w,
+            )
+        else:
+            _log.warning(
+                "thread_angle %.3g / pitch %.3g make the flank too wide; "
+                "half-width clamped to %.3g (effective angle reduced).",
+                angle,
+                pitch,
+                half_w,
+            )
     # Crest flat half-width.
     if crest_width > 0:
         crest_half = min(crest_width / 2.0, 0.95 * half_w)
@@ -778,7 +786,19 @@ def make_threaded_rod(
     collar_z = -thickness / 2.0 + smooth_length / 2.0
     shank_top = -thickness / 2.0 + smooth_length
     lead = min(lead_in_length, 0.45 * thickness)
+    if lead_in_length > lead:
+        _log.warning(
+            "lead_in_length %.3g exceeds 0.45 * thickness; clamped to %.3g.",
+            lead_in_length,
+            lead,
+        )
     runout = min(runout_length, thickness - smooth_length)
+    if runout_length > runout:
+        _log.warning(
+            "runout_length %.3g exceeds the threaded length; clamped to %.3g.",
+            runout_length,
+            runout,
+        )
     has_taper = lead > 0 or runout > 0
 
     if bore_diameter > 0:
