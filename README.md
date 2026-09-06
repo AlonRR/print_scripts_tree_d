@@ -34,3 +34,7 @@ with `%autoreload 2` hot-reload and VS Code Interactive (`# %%` cells).
 ## Development
 
 See [CLAUDE.md](CLAUDE.md) for architecture, conventions, and build123d API rules.
+
+---
+
+_Parts of this repository were drafted with the help of an LLM agent; reviewed and verified locally._
