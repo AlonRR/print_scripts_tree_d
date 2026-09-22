@@ -1,8 +1,8 @@
-# The projects this repo holds. Schema: alon/tasks SCHEMA.md
+# The projects this repo holds. Schema: the tasks repo, SCHEMA.md
 projects:
   - name:     Parametric shape library (build123d)
     kind:     build
     state:    parked
-    next:     "decide: revive it, or consolidate on OpenSCAD in 3d-printing"
+    next:     "decide whether to extend the library or leave it at its current scope"
     trackers: [README.md, ARCHITECTURE.md]
-    review:   2026-09-20
+    review:   2026-09-22
